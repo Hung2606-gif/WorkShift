@@ -1,0 +1,138 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  EMPLOYEE
+  HR
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum CompanyPlan {
+  STARTER
+  BUSINESS
+  ENTERPRISE
+}
+
+enum AttendanceStatus {
+  NORMAL
+  LATE
+}
+
+model Company {
+  id                   String          @id @default(uuid()) @db.Uuid
+  name                 String
+  code                 String?         @unique
+  contactEmail         String?         @unique @map("company_email")
+  allowedIp            String?         @map("allowed_ip") @db.Inet
+  plan                 CompanyPlan     @default(STARTER)
+  // null represents the unlimited employee allocation in ENTERPRISE.
+  maxEmployees         Int?            @map("max_employees")
+  storageQuotaMb       Int             @default(2048) @map("storage_quota_mb")
+  features             Json            @default("{}")
+  isActive             Boolean         @default(true) @map("is_active")
+  subscriptionEndsAt   DateTime?       @map("subscription_ends_at") @db.Timestamptz(6)
+  supportAccessEnabled Boolean         @default(false) @map("support_access_enabled")
+  users                User[]
+  supportTickets       SupportTicket[]
+  createdAt            DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("companies")
+}
+
+model User {
+  id          String       @id @default(uuid()) @db.Uuid
+  companyId   String?      @map("company_id") @db.Uuid
+  company     Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  fullName    String       @map("full_name")
+  email       String       @unique
+  role        Role         @default(EMPLOYEE)
+  isTemporaryPassword Boolean @default(false) @map("is_temporary_password")
+  attendances Attendance[]
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([companyId])
+  @@map("users")
+}
+
+model Attendance {
+  id          String           @id @default(uuid()) @db.Uuid
+  userId      String           @map("user_id") @db.Uuid
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkInTime DateTime         @map("check_in_time") @db.Timestamptz(6)
+  status      AttendanceStatus @default(NORMAL)
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([userId, checkInTime])
+  @@map("attendances")
+}
+
+model SystemSetting {
+  id        String   @id @default(uuid()) @db.Uuid
+  namespace String
+  key       String   @map("setting_key")
+  value     Json     @map("setting_value")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([namespace, key])
+  @@map("system_settings")
+}
+
+model EmailTemplate {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique @map("template_key")
+  subject   String
+  body      String
+  channel   String   @default("EMAIL")
+  isActive  Boolean  @default(true) @map("is_active")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("email_templates")
+}
+
+model SystemIntegration {
+  id          String   @id @default(uuid()) @db.Uuid
+  provider    String   @unique
+  displayName String   @map("display_name")
+  config      Json     @default("{}")
+  isEnabled   Boolean  @default(false) @map("is_enabled")
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("system_integrations")
+}
+
+model GlobalIpRule {
+  id          String   @id @default(uuid()) @db.Uuid
+  // Prisma does not expose PostgreSQL's `cidr` native type; the database
+  // migration keeps that type while the client treats it as a string.
+  cidr        String
+  action      String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([cidr, action])
+  @@map("global_ip_rules")
+}
+
+model SupportTicket {
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  subject     String
+  description String
+  status      String   @default("OPEN")
+  priority    String   @default("NORMAL")
+  adminNote   String?  @map("admin_note")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status, updatedAt])
+  @@map("support_tickets")
+}

@@ -1,0 +1,8 @@
+# Local configuration must be entered in the Vercel dashboard, never deployed.
+.env
+.env.*
+.vercel
+node_modules
+dist
+coverage
+*.log

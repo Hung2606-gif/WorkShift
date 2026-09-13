@@ -1,0 +1,15 @@
+# Never upload local credentials, deployment metadata, or developer-only files.
+.env
+.env.*
+.vercel
+node_modules
+coverage
+*.log
+
+# These helpers and tests can access administrator data and are not runtime code.
+test
+test-*.js
+debug-*.js
+check-admin-profile.js
+simple-debug.js
+fix-clerk-password.js
