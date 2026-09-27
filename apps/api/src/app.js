@@ -48,6 +48,10 @@ export function createApp() {
 
   app.use('/api/v1/auth/password-reset', passwordResetRouter);
   app.use('/api/v1/auth', authRouter);
+  // The email provider has no WorkShift session; the webhook checks its shared
+  // secret instead. It must come before profileRouter, which requires a session
+  // for every path under /api/v1.
+  app.use('/api/v1/email', inboundEmailRouter);
   app.use('/api/v1', profileRouter);
   app.use('/api/v1', companyRouter);
   app.use('/api/v1/attendance', attendanceRouter());
@@ -56,7 +60,6 @@ export function createApp() {
   app.use('/api/v1/support', supportRouter);
   app.use('/api/v1/hr', hrWorkspaceRouter);
   app.use('/api/v1/employee', employeeWorkspaceRouter);
-  app.use('/api/v1/email', inboundEmailRouter);
   app.use(errorHandler);
   return app;
 }
