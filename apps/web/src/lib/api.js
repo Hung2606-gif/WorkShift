@@ -84,14 +84,62 @@ export function exchangeOAuthSession(clerkToken) {
 }
 
 // ---------------- ATTENDANCE (All Roles) ----------------
+function currentPosition() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new ApiError('Trình duyệt không hỗ trợ định vị GPS.', 400, 'GPS_UNSUPPORTED'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(resolve, (error) => {
+      const message = error.code === error.PERMISSION_DENIED
+        ? 'Bạn cần cho phép truy cập vị trí để chấm công.'
+        : 'Không lấy được vị trí GPS. Vui lòng bật định vị và thử lại.';
+      reject(new ApiError(message, 400, 'GPS_UNAVAILABLE'));
+    }, { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 });
+  });
+}
+
+// When a response is lost, the server may already have recorded the request.
+// Resending with the same key returns that record instead of creating another.
+const pendingAttendanceRequests = new Map();
+const attendanceAttempts = 3;
+
+async function submitAttendance(path) {
+  const position = await currentPosition();
+  const requestId = pendingAttendanceRequests.get(path) ?? crypto.randomUUID();
+  pendingAttendanceRequests.set(path, requestId);
+  const body = JSON.stringify({
+    requestId,
+    latitude: position.coords.latitude,
+    longitude: position.coords.longitude,
+    accuracy: position.coords.accuracy,
+    capturedAt: new Date(position.timestamp).toISOString()
+  });
+
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      const result = await api(path, { method: 'POST', body });
+      pendingAttendanceRequests.delete(path);
+      return result;
+    } catch (error) {
+      // A 4xx is a final answer; a network error or 5xx leaves the outcome unknown.
+      const outcomeUnknown = !(error instanceof ApiError) || error.status >= 500;
+      if (!outcomeUnknown) pendingAttendanceRequests.delete(path);
+      if (!outcomeUnknown || attempt === attendanceAttempts) throw error;
+      await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+    }
+  }
+}
+
 export function checkInAttendance() {
-  return api('/attendance/checkin', { method: 'POST', body: '{}' });
+  return submitAttendance('/attendance/checkin');
+}
+
+export function employeeCheckOut() {
+  return submitAttendance('/attendance/checkout');
 }
 
 // ---------------- EMPLOYEE WORKSPACE (/api/v1/employee) ----------------
-export function employeeCheckOut() {
-  return api('/employee/checkout', { method: 'POST', body: '{}' });
-}
 
 export function getEmployeeAttendance(month) {
   const query = month ? `?month=${encodeURIComponent(month)}` : '';

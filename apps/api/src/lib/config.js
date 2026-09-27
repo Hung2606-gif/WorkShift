@@ -26,6 +26,14 @@ export function getConfig() {
   const otpPepper = process.env.OTP_PEPPER || appJwtSecret;
   if (otpPepper.length < 32) throw new Error('OTP_PEPPER must contain at least 32 characters when configured.');
 
+  // Shift start/end times and work dates are wall-clock values in this zone.
+  const attendanceTimezone = process.env.ATTENDANCE_TIMEZONE || 'Asia/Ho_Chi_Minh';
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: attendanceTimezone });
+  } catch {
+    throw new Error('ATTENDANCE_TIMEZONE must be a valid IANA time zone.');
+  }
+
   const smsProvider = (process.env.SMS_PROVIDER ?? '').trim().toUpperCase();
   let sms = null;
   if (smsProvider === 'TWILIO') {
@@ -60,6 +68,7 @@ export function getConfig() {
     companyEmailDomain,
     appJwtSecret,
     otpPepper,
+    attendanceTimezone,
     webOrigin: process.env.WEB_ORIGIN ?? 'http://localhost:5173',
     port: Number(process.env.PORT ?? 3001),
     smtp: smtpConfigured ? {

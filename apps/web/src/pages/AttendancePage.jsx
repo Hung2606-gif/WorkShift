@@ -5,7 +5,6 @@ import {
   getEmployeeAttendance 
 } from '../lib/api';
 import { 
-  Wifi, 
   CheckCircle2, 
   AlertTriangle, 
   Clock, 
@@ -94,14 +93,14 @@ export function AttendancePage({ profile, onCheckin }) {
       {/* Page Header */}
       <div className="text-center">
         <div className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 border border-brand-200 px-3 py-1 text-xs font-bold text-brand-700 mb-2">
-          <Wifi className="size-3.5" />
-          <span>Xác thực Mạng Wi-Fi Doanh nghiệp</span>
+          <MapPin className="size-3.5" />
+          <span>Xác thực Vị trí GPS</span>
         </div>
         <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight font-display">
           Chấm công & Điểm danh
         </h1>
         <p className="mt-2 text-sm sm:text-base text-slate-500 max-w-lg mx-auto leading-relaxed">
-          Kết nối thiết bị vào Wi-Fi văn phòng công ty để thực hiện Check-in đầu ca hoặc Check-out kết thúc ca.
+          Có mặt tại địa điểm làm việc và cho phép truy cập vị trí để Check-in đầu ca hoặc Check-out kết thúc ca.
         </p>
       </div>
 
@@ -118,7 +117,7 @@ export function AttendancePage({ profile, onCheckin }) {
             {busy ? (
               <RefreshCw className="size-8 animate-spin text-white" />
             ) : (
-              <Wifi className="size-8" />
+              <MapPin className="size-8" />
             )}
           </div>
         </div>
@@ -182,9 +181,9 @@ export function AttendancePage({ profile, onCheckin }) {
                   <div className="mt-3 text-xs text-rose-700 bg-white/60 rounded-xl p-3 border border-rose-200/60 space-y-1">
                     <p className="font-bold">Gợi ý khắc phục sự cố:</p>
                     <ul className="list-disc list-inside space-y-0.5 opacity-90">
-                      <li>Tắt mạng dữ liệu di động 4G/5G và kết nối vào Wi-Fi công ty.</li>
-                      <li>Tắt tất cả các ứng dụng VPN hoặc Proxy làm thay đổi địa chỉ IP.</li>
-                      <li>Nếu IP công ty mới thay đổi, hãy thông báo Quản lý nhân sự (HR) để cập nhật IP.</li>
+                      <li>Cho phép trình duyệt truy cập vị trí và bật định vị chính xác (GPS).</li>
+                      <li>Nếu tín hiệu GPS yếu, hãy ra gần cửa sổ hoặc khu vực thoáng rồi thử lại.</li>
+                      <li>Nếu bạn đang ở văn phòng nhưng vẫn bị báo ngoài bán kính, hãy báo Quản lý nhân sự (HR).</li>
                     </ul>
                   </div>
                 )}

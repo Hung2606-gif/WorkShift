@@ -15,7 +15,7 @@ The Clerk application is linked to `app_3IM9Na6OCdLJT9zzAwX7bevgcam`. In the Cle
 1. Copy `apps/api/.env.example` to `apps/api/.env`, then set the Supabase values, `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, and `CLERK_WEBHOOK_SIGNING_SECRET`.
 2. Copy `apps/web/.env.example` to `apps/web/.env.local`, then set `VITE_CLERK_PUBLISHABLE_KEY` to the same publishable key.
 3. In Clerk Dashboard, add `http://localhost:5173` to the development instance's allowed origins. Add each deployed web URL before production deployment.
-4. Apply the database migrations, including `202608240001_clerk_auth.sql`.
+4. Apply the database migrations, including `202608240001_clerk_auth.sql` and `202609270001_attendance_shift_checkin.sql` (apply the latter before deploying the API that requires GPS check-in).
 5. In Clerk Dashboard > **Webhooks**, add a public endpoint at `https://YOUR_PUBLIC_API_URL/api/v1/webhooks/clerk`, subscribe to `user.created`, `user.updated`, and `user.deleted`, then copy that endpoint's Signing Secret to `CLERK_WEBHOOK_SIGNING_SECRET`.
 6. In Clerk Dashboard > **User & Authentication** > **Social connections**, enable Google. The redirect URI shown by Clerk must be added to the Google OAuth client; do not replace it with the WorkShift callback URL.
 
@@ -25,7 +25,7 @@ Google OAuth uses `/oauth/callback` only to complete the Clerk redirect, then `/
 
 ## HR Wi-Fi and employee imports
 
-The HR **Cấu hình IP Wi-Fi** tab shows the IP currently enforced for the company and can either save the public IP detected by the API request or a manually entered IPv4/IPv6 address. The detected value is the public egress IP, not a private router address such as `192.168.x.x`.
+The HR **Cấu hình IP Wi-Fi** tab shows the company IP that check-ins are compared against (a check-in from another IP is accepted and flagged in the HR attendance table) and can either save the public IP detected by the API request or a manually entered IPv4/IPv6 address. The detected value is the public egress IP, not a private router address such as `192.168.x.x`.
 
 The HR **Nhân viên** tab can import up to 50 invitations from CSV or `.xlsx`. Required columns are `Họ và tên` and `Email`; `Phòng ban` or `Mã phòng ban` is optional. Employees must use the configured `@gmail.com` policy. The file is validated in the browser before the API creates application invitations, so each accepted invitation gets the required WorkShift company and department metadata.
 
@@ -71,8 +71,8 @@ All API routes require a Clerk session-token bearer token except `GET /health` a
 | --- | --- |
 | `POST /api/v1/faces/enroll` | Store one consented face vector and its private source image. |
 | `POST /api/v1/attendance/challenge` | Issues an authenticated, one-time 90-second challenge before camera capture. |
-| `POST /api/v1/attendance/check-in` | Account-bound face + GPS check-in; consumes the server-issued challenge and stores immutable capture evidence. |
-| `POST /api/v1/attendance/check-out` | Close the authenticated employee's current daily record. |
+| `POST /api/v1/attendance/checkin` | Checks in to the employee's open assigned shift. Requires a GPS fix inside the office radius; a request from outside the company IP is recorded and flagged for HR review, not blocked. One record per shift, and a resent `requestId` returns the stored record. |
+| `POST /api/v1/attendance/checkout` | Closes that shift's record with the same GPS check and IP flag; only an open record can be closed. |
 | `GET /api/v1/attendance/today`, `/history` | Employee's sanitized attendance data. |
 | `GET /api/v1/admin/summary`, `/flags` | HR/Admin dashboard data; a reviewed alert can be updated with `PATCH /admin/attendance/:id/review`. |
 | `POST /api/v1/webhooks/clerk` | Public Svix-verified Clerk events: creates/updates profiles and deactivates deleted users. |

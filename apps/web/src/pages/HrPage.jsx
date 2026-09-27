@@ -61,6 +61,14 @@ import {
   Upload
 } from 'lucide-react';
 
+// Check-ins from outside the company network are allowed; HR reviews them here.
+function offNetworkNote(log) {
+  const notes = [['vào', log.check_in_evidence], ['ra', log.check_out_evidence]]
+    .filter(([, evidence]) => evidence?.ipMatchesCompany === false)
+    .map(([label, evidence]) => `Chấm công ${label} từ IP ${evidence.ip}`);
+  return notes.length ? notes.join('; ') : null;
+}
+
 const shiftDefaults = {
   name: '',
   startTime: '08:30',
@@ -1081,6 +1089,12 @@ export function HrPage({ profile, onProfileChanged }) {
                       </td>
                       <td className="px-5 py-3.5">
                         <StatusBadge status={log.status} size="sm" />
+                        {offNetworkNote(log) && (
+                          <p className="mt-1.5 flex items-center gap-1 text-[11px] font-semibold text-amber-700" title={offNetworkNote(log)}>
+                            <AlertCircle className="size-3.5 shrink-0" />
+                            IP ngoài mạng công ty
+                          </p>
+                        )}
                       </td>
                       <td className="px-5 py-3.5 text-xs text-slate-500">
                         {log.adjustment_note || '-'}
@@ -1175,7 +1189,7 @@ export function HrPage({ profile, onProfileChanged }) {
                   Cấu hình Địa chỉ IP Wi-Fi Doanh nghiệp
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Địa chỉ IP công khai của mạng Wi-Fi doanh nghiệp, dùng để xác minh khi nhân viên chấm công.
+                  Địa chỉ IP công khai của mạng Wi-Fi doanh nghiệp. Chấm công từ IP khác vẫn được ghi nhận và được đánh dấu để HR xem lại.
                 </p>
               </div>
             </div>
