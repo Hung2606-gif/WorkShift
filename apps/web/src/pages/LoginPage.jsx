@@ -1,4 +1,7 @@
-import { useSignIn } from '@clerk/react';
+// Since @clerk/react v6 the default `useSignIn()` returns the signal API
+// ({ signIn, errors, fetchStatus }) without `isLoaded` or
+// `authenticateWithRedirect`. This page uses the classic SignIn resource.
+import { useSignIn } from '@clerk/react/legacy';
 import { useState } from 'react';
 import { loginWithPassword } from '../lib/api';
 import { ForgotPasswordModal } from '../components/ForgotPasswordModal';

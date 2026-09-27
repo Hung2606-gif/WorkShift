@@ -52,7 +52,12 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
 
 authRouter.post('/oauth/exchange', asyncHandler(async (req, res) => {
   const { isAuthenticated, userId } = getAuth(req);
-  if (!isAuthenticated || !userId) throw new HttpError(401, 'Phiên OAuth2 không hợp lệ.', 'UNAUTHENTICATED');
+  if (!isAuthenticated || !userId) {
+    // clerkMiddleware records why it rejected the token, e.g. a token issued by
+    // another Clerk instance or by a web origin missing from WEB_ORIGIN.
+    console.warn('OAuth exchange rejected:', res.getHeader('x-clerk-auth-reason') ?? 'no session token', res.getHeader('x-clerk-auth-message') ?? '');
+    throw new HttpError(401, 'Phiên OAuth2 không hợp lệ.', 'UNAUTHENTICATED');
+  }
   const profile = await resolveAuthorizedClerkProfile(userId);
   res.json(sessionResponse(profile));
 }));

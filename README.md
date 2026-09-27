@@ -19,6 +19,8 @@ The Clerk application is linked to `app_3IM9Na6OCdLJT9zzAwX7bevgcam`. In the Cle
 5. In Clerk Dashboard > **Webhooks**, add a public endpoint at `https://YOUR_PUBLIC_API_URL/api/v1/webhooks/clerk`, subscribe to `user.created`, `user.updated`, and `user.deleted`, then copy that endpoint's Signing Secret to `CLERK_WEBHOOK_SIGNING_SECRET`.
 6. In Clerk Dashboard > **User & Authentication** > **Social connections**, enable Google. The redirect URI shown by Clerk must be added to the Google OAuth client; do not replace it with the WorkShift callback URL.
 
+The web and API keys must come from the same Clerk instance (both `pk_test`/`sk_test`, or both `pk_live`/`sk_live`), and `users.clerk_user_id` refers to users of that instance. Otherwise the API rejects the web's session token (`jwk-kid-mismatch` in the API log) and cannot find the user for password login. A production instance needs a domain you own: its Frontend API (`clerk.<domain>`) requires DNS records, which cannot be created under `*.vercel.app`.
+
 Google OAuth uses `/oauth/callback` only to complete the Clerk redirect, then `/oauth/complete` exchanges the Clerk session for a WorkShift token. Production static hosting must rewrite both paths (and other SPA paths) to `index.html`; `apps/web/vercel.json` provides this for Vercel.
 
 ## HR Wi-Fi and employee imports
