@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler, HttpError } from '../lib/errors.js';
@@ -5,8 +6,23 @@ import { createServiceClient } from '../lib/supabase.js';
 import { audit, clientIp } from '../services/audit.js';
 import { sendTicketAutoResponderEmail } from '../services/notifications.js';
 import { getConfig } from '../lib/config.js';
+import { ticketIdFromReference } from '../lib/ticket-reference.js';
 
 export const inboundEmailRouter = Router();
+
+// The endpoint is public, so the provider must present the shared secret in the
+// X-Webhook-Secret header, or as ?token= for providers that cannot set headers.
+// Without it anyone could open tickets as any user and make the API send email
+// to any address.
+function assertInboundSecret(req) {
+  const expected = getConfig().inboundEmailSecret;
+  if (!expected) throw new HttpError(503, 'Chức năng nhận email chưa được cấu hình.', 'INBOUND_EMAIL_DISABLED');
+  const received = Buffer.from(String(req.get('x-webhook-secret') ?? req.query.token ?? ''));
+  const secret = Buffer.from(expected);
+  if (received.length !== secret.length || !timingSafeEqual(received, secret)) {
+    throw new HttpError(401, 'Webhook email không hợp lệ.', 'INVALID_WEBHOOK_SECRET');
+  }
+}
 
 function extractEmailAddress(raw) {
   if (!raw) return '';
@@ -65,6 +81,7 @@ function parseInboundPayload(body) {
 
 // Inbound Email Webhook Receiver: POST /api/v1/email/inbound
 inboundEmailRouter.post('/inbound', asyncHandler(async (req, res) => {
+  assertInboundSecret(req);
   const payload = parseInboundPayload(req.body);
   const fromEmail = extractEmailAddress(payload.from);
   const toEmail = extractEmailAddress(payload.to);
@@ -75,34 +92,33 @@ inboundEmailRouter.post('/inbound', asyncHandler(async (req, res) => {
 
   const db = createServiceClient();
 
-  // Find if sender belongs to any user in the system
-  const { data: user } = await db.from('users')
-    .select('id, full_name, email, company_id, role, companies(id, name, company_email)')
-    .eq('email', fromEmail)
-    .maybeSingle();
-
-  let targetCompanyId = user?.company_id || null;
-
-  // If no company found from sender, try finding company by recipient email
-  if (!targetCompanyId && toEmail) {
-    const { data: matchedCompany } = await db.from('companies')
+  // The From address can be forged, so it never identifies a user or grants
+  // access. The mailbox the email was delivered to chooses the company first;
+  // the sender's apparent company is only a fallback for routing.
+  let targetCompany = null;
+  if (toEmail) {
+    const { data } = await db.from('companies')
       .select('id, name')
       .eq('company_email', toEmail)
       .maybeSingle();
-    if (matchedCompany) {
-      targetCompanyId = matchedCompany.id;
-    }
+    targetCompany = data;
   }
-
-  // If still no company, fall back to first active company or system default
-  if (!targetCompanyId) {
-    const { data: firstCompany } = await db.from('companies')
-      .select('id')
+  if (!targetCompany) {
+    const { data: sender } = await db.from('users')
+      .select('companies(id, name)')
+      .eq('email', fromEmail)
+      .maybeSingle();
+    targetCompany = sender?.companies ?? null;
+  }
+  if (!targetCompany) {
+    const { data } = await db.from('companies')
+      .select('id, name')
       .eq('is_active', true)
       .limit(1)
       .maybeSingle();
-    targetCompanyId = firstCompany?.id || null;
+    targetCompany = data;
   }
+  const targetCompanyId = targetCompany?.id ?? null;
 
   if (!targetCompanyId) {
     throw new HttpError(422, 'Hệ thống chưa có doanh nghiệp nào để gắn ticket.', 'NO_TENANT_AVAILABLE');
@@ -111,15 +127,15 @@ inboundEmailRouter.post('/inbound', asyncHandler(async (req, res) => {
   const subject = String(payload.subject || 'Yêu cầu hỗ trợ qua Email').trim();
   const rawBody = String(payload.text || payload.html || '(Nội dung email trống)').trim();
 
-  // Check if this is a reply to an existing ticket: e.g. [WorkShift Support #12345678] or UUID
-  const ticketIdMatch = subject.match(/#([a-f0-9-]{8,36})/i) || rawBody.match(/Ticket-ID:\s*([a-f0-9-]{8,36})/i);
+  // Only a reply quoting the signed reference from the ticket's auto-responder
+  // email can append to that ticket; a known ticket ID alone is not enough.
+  const ticketId = ticketIdFromReference(`${subject}\n${rawBody}`);
   let existingTicket = null;
 
-  if (ticketIdMatch) {
-    const candidateId = ticketIdMatch[1];
+  if (ticketId) {
     const { data: t } = await db.from('support_tickets')
       .select('id, company_id, subject, description, status')
-      .or(`id.eq.${candidateId},id.ilike.${candidateId}%`)
+      .eq('id', ticketId)
       .maybeSingle();
     existingTicket = t;
   }
@@ -139,7 +155,7 @@ inboundEmailRouter.post('/inbound', asyncHandler(async (req, res) => {
       })
       .eq('id', existingTicket.id);
 
-    await audit(user?.id || null, 'INBOUND_EMAIL_TICKET_REPLY', {
+    await audit(null, 'INBOUND_EMAIL_TICKET_REPLY', {
       ticketId: existingTicket.id,
       from: fromEmail,
       subject
@@ -155,9 +171,9 @@ inboundEmailRouter.post('/inbound', asyncHandler(async (req, res) => {
     const { data: newTicket, error: ticketError } = await db.from('support_tickets')
       .insert({
         company_id: targetCompanyId,
-        created_by: user?.id || null,
+        created_by: null,
         subject: subject.slice(0, 200),
-        description: `[Email từ: ${fromEmail}]\n\n${rawBody}`,
+        description: `[Email từ: ${fromEmail} (địa chỉ người gửi chưa được xác minh)]\n\n${rawBody}`,
         priority: 'NORMAL',
         status: 'OPEN'
       })
@@ -176,14 +192,14 @@ inboundEmailRouter.post('/inbound', asyncHandler(async (req, res) => {
           to: fromEmail,
           ticketId: newTicket.id,
           subject: newTicket.subject,
-          companyName: user?.companies?.name || 'Doanh nghiệp'
+          companyName: targetCompany.name || 'Doanh nghiệp'
         });
       }
     } catch (mailErr) {
       console.warn('Could not send inbound auto-responder email:', mailErr.message);
     }
 
-    await audit(user?.id || null, 'INBOUND_EMAIL_TICKET_CREATED', {
+    await audit(null, 'INBOUND_EMAIL_TICKET_CREATED', {
       ticketId: newTicket.id,
       from: fromEmail,
       companyId: targetCompanyId,

@@ -3,6 +3,7 @@ import { isCompanyEmail } from '../lib/access.js';
 import { HttpError } from '../lib/errors.js';
 import { getConfig } from '../lib/config.js';
 import { createServiceClient } from '../lib/supabase.js';
+import { ticketReference } from '../lib/ticket-reference.js';
 
 let transporter;
 
@@ -64,7 +65,9 @@ export function getTransporter() {
       secure: smtp.secure,
       pool: true,
       auth: { user: smtp.user, pass: smtp.pass },
-      tls: { rejectUnauthorized: false },
+      // The server certificate is verified (Node's default); skipping it would
+      // expose the SMTP password and every email, including reset codes, to
+      // anyone able to intercept the connection.
       disableFileAccess: true,
       disableUrlAccess: true
     });
@@ -162,26 +165,50 @@ export async function sendHrWelcomeEmail({ email, fullName, companyName, tempora
   });
 }
 
+export async function sendPasswordResetOtpEmail({ to, fullName, code }) {
+  const subject = '[WorkShift] Mã xác thực đặt lại mật khẩu';
+  const contentHtml = `
+    <h2 style="margin-top:0; color:#1e293b; font-size:18px;">Đặt lại mật khẩu</h2>
+    <p>Xin chào <b>${escapeHtml(fullName || 'bạn')}</b>,</p>
+    <p>Mã xác thực để đặt lại mật khẩu WorkShift của bạn là:</p>
+    <div class="highlight-box">
+      <p style="margin:4px 0; font-size:24px; letter-spacing:6px;"><b>${escapeHtml(code)}</b></p>
+    </div>
+    <p>Mã có hiệu lực trong 5 phút và chỉ dùng được một lần. Không chia sẻ mã này với bất kỳ ai.</p>
+    <p>Nếu bạn không yêu cầu đặt lại mật khẩu, hãy bỏ qua email này. Mật khẩu của bạn vẫn giữ nguyên.</p>
+  `;
+
+  return sendGeneralEmail({
+    to,
+    subject,
+    text: `Mã xác thực đặt lại mật khẩu WorkShift: ${code}. Mã có hiệu lực trong 5 phút. Không chia sẻ mã này với bất kỳ ai.`,
+    html: emailLayout({ title: subject, contentHtml })
+  });
+}
+
 export async function sendTicketAutoResponderEmail({ to, ticketId, subject: ticketSubject, companyName }) {
-  const subject = `[WorkShift Support #${ticketId?.slice(0, 8) || 'Ticket'}] Đã tiếp nhận yêu cầu: ${ticketSubject}`;
+  // Replies are matched to the ticket only through this signed reference.
+  const reference = ticketReference(ticketId);
+  const subject = `[WorkShift Support ${reference}] Đã tiếp nhận yêu cầu: ${ticketSubject}`;
   const contentHtml = `
     <h2 style="margin-top:0; color:#1e293b; font-size:18px;">Yêu cầu hỗ trợ của bạn đã được ghi nhận</h2>
     <p>Xin chào quý khách,</p>
     <p>WorkShift đã tiếp nhận yêu cầu hỗ trợ từ bạn với các thông tin sau:</p>
     <div class="highlight-box">
       <p style="margin:4px 0;"><b>Mã Ticket:</b> <code>${escapeHtml(ticketId)}</code></p>
+      <p style="margin:4px 0;"><b>Mã phản hồi:</b> <code>${escapeHtml(reference)}</code></p>
       <p style="margin:4px 0;"><b>Tiêu đề:</b> ${escapeHtml(ticketSubject)}</p>
       <p style="margin:4px 0;"><b>Thời gian tiếp nhận:</b> ${new Date().toLocaleString('vi-VN')}</p>
       <p style="margin:4px 0;"><b>Trạng thái:</b> Đang xử lý (OPEN)</p>
     </div>
     <p>Đội ngũ kỹ thuật và hỗ trợ khách hàng của WorkShift sẽ xem xét và phản hồi trong thời gian sớm nhất.</p>
-    <p>Bạn có thể trả lời trực tiếp email này để bổ sung thêm thông tin.</p>
+    <p>Bạn có thể trả lời trực tiếp email này để bổ sung thêm thông tin. Vui lòng giữ nguyên tiêu đề hoặc mã phản hồi ở trên.</p>
   `;
 
   return sendGeneralEmail({
     to,
     subject,
-    text: `WorkShift đã tiếp nhận yêu cầu #${ticketId}: ${ticketSubject}. Chúng tôi sẽ phản hồi sớm nhất.`,
+    text: `WorkShift đã tiếp nhận yêu cầu #${ticketId}: ${ticketSubject}. Chúng tôi sẽ phản hồi sớm nhất. Mã phản hồi: ${reference}`,
     html: emailLayout({ title: subject, contentHtml })
   });
 }

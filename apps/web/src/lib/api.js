@@ -57,17 +57,17 @@ export function loginWithPassword(email, password) {
   return request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
 }
 
-export function requestPasswordResetOtp(phoneNumber) {
+export function requestPasswordResetOtp(identifier) {
   return request('/auth/password-reset/request-otp', {
     method: 'POST',
-    body: JSON.stringify({ phoneNumber })
+    body: JSON.stringify({ identifier })
   });
 }
 
-export function confirmPasswordReset({ phoneNumber, otpCode, newPassword }) {
+export function confirmPasswordReset({ identifier, otpCode, newPassword }) {
   return request('/auth/password-reset/confirm', {
     method: 'POST',
-    body: JSON.stringify({ phoneNumber, otpCode, newPassword })
+    body: JSON.stringify({ identifier, otpCode, newPassword })
   });
 }
 

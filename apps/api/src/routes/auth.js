@@ -36,18 +36,35 @@ function sessionResponse(profile) {
 
 export const authRouter = Router();
 
+// Every failed login gets the same status, message and minimum duration, so a
+// response does not reveal whether an email address has an account. Without
+// the delay, an unknown email would fail faster because it skips the Clerk call.
+export const failedLoginMinimumMs = 1_000;
+
+function invalidLogin() {
+  return new HttpError(401, 'Email hoặc mật khẩu không đúng, hoặc tài khoản chưa được cấp quyền truy cập.', 'INVALID_CREDENTIALS');
+}
+
 authRouter.post('/login', asyncHandler(async (req, res) => {
+  const startedAt = Date.now();
   const body = loginSchema.parse(req.body);
-  // Check the WorkShift authorization record before submitting credentials to
-  // Clerk. Unauthorized email addresses never receive an application token.
-  const profile = await findAuthorizedProfileByEmail(body.email);
-  if (!profile.clerk_user_id) throw new HttpError(409, 'Tài khoản chưa hoàn tất liên kết đăng nhập. Vui lòng dùng OAuth2 hoặc liên hệ Admin/HR.', 'CLERK_ACCOUNT_NOT_LINKED');
   try {
-    await clerkClient.users.verifyPassword({ userId: profile.clerk_user_id, password: body.password });
-  } catch {
-    throw new HttpError(401, 'Email hoặc mật khẩu không đúng.', 'INVALID_CREDENTIALS');
+    // Check the WorkShift authorization record before submitting credentials to
+    // Clerk. Unauthorized email addresses never receive an application token.
+    const profile = await findAuthorizedProfileByEmail(body.email);
+    if (!profile.clerk_user_id) throw invalidLogin();
+    try {
+      await clerkClient.users.verifyPassword({ userId: profile.clerk_user_id, password: body.password });
+    } catch {
+      throw invalidLogin();
+    }
+    res.json(sessionResponse(profile));
+  } catch (error) {
+    // Service failures are not about the account and stay distinguishable.
+    if (!(error instanceof HttpError) || error.status >= 500) throw error;
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, failedLoginMinimumMs - (Date.now() - startedAt))));
+    throw invalidLogin();
   }
-  res.json(sessionResponse(profile));
 }));
 
 authRouter.post('/oauth/exchange', asyncHandler(async (req, res) => {

@@ -26,6 +26,10 @@ export function getConfig() {
   const otpPepper = process.env.OTP_PEPPER || appJwtSecret;
   if (otpPepper.length < 32) throw new Error('OTP_PEPPER must contain at least 32 characters when configured.');
 
+  // Shared secret the inbound email provider must send. Unset disables the endpoint.
+  const inboundEmailSecret = process.env.INBOUND_EMAIL_WEBHOOK_SECRET || null;
+  if (inboundEmailSecret && inboundEmailSecret.length < 32) throw new Error('INBOUND_EMAIL_WEBHOOK_SECRET must contain at least 32 characters.');
+
   // Shift start/end times and work dates are wall-clock values in this zone.
   const attendanceTimezone = process.env.ATTENDANCE_TIMEZONE || 'Asia/Ho_Chi_Minh';
   try {
@@ -69,6 +73,7 @@ export function getConfig() {
     appJwtSecret,
     otpPepper,
     attendanceTimezone,
+    inboundEmailSecret,
     webOrigin: process.env.WEB_ORIGIN ?? 'http://localhost:5173',
     port: Number(process.env.PORT ?? 3001),
     smtp: smtpConfigured ? {

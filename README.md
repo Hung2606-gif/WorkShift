@@ -44,6 +44,8 @@ WorkShift has one system administrator: `hungblockchain06@gmail.com`. That accou
 
 Public registration is removed from the web application. HR creates internal accounts by sending a Clerk invitation from **Quan ly cong ty**. Invitations intentionally use Clerk's managed acceptance page, which completes the invitation ticket and password setup before the employee signs in to WorkShift. In Clerk Dashboard, also disable public sign-ups for this instance so the same rule is enforced before a Clerk session can be created. Apply the migration `202608260001_company_access_policy.sql` in Supabase before enabling the policy for existing users.
 
+Password login and recovery do not reveal whether an account exists. Every failed login returns the same 401 after at least one second, and attempts are limited to 10 per account per 15 minutes. **Quên mật khẩu** accepts an email address or a Vietnamese mobile number and sends a 6-digit code. The code goes by SMS when a number was entered and `SMS_PROVIDER` is configured, and by email (SMTP) otherwise. A code is valid for 5 minutes, works once, and locks after 5 wrong attempts. A new code can be sent once a minute and at most 5 times a day. Only a keyed hash of the code is kept, in the Clerk user's private metadata.
+
 ## Operations setup
 
 The previous first-admin bootstrap flow is retired. Do not use `/sign-up`: sign in as `hungblockchain06@gmail.com` to create the system administrator profile, then use **Quan ly cong ty** to invite internal users.
@@ -106,6 +108,8 @@ SMTP_FROM=WorkShift <no-reply@example.com>
 ```
 
 Use `SMTP_SECURE=true` only for implicit TLS, usually port 465. An ADMIN can dispatch the queue with `POST /api/v1/admin/notifications/dispatch`; schedule that endpoint with your deployment platform after validating a delivery manually.
+
+The inbound email webhook `POST /api/v1/email/inbound` turns emails into support tickets. It is disabled (503) until `INBOUND_EMAIL_WEBHOOK_SECRET` (at least 32 characters) is set on the API. The provider must then send the secret in the `X-Webhook-Secret` header, or as `?token=` in the webhook URL for providers that cannot set headers. The sender's From address can be forged, so it only helps route a ticket: it never sets the ticket's creator. A reply is added to an existing ticket only when it quotes the signed `WS-…` reference from that ticket's auto-responder email.
 
 ## Important production controls
 

@@ -8,6 +8,7 @@ import { adminRouter } from './routes/admin.js';
 import { attendanceRouter } from './routes/attendance.js';
 import { clerkWebhookRouter } from './routes/clerk-webhooks.js';
 import { authRouter } from './routes/auth.js';
+import { passwordResetRouter } from './routes/password-reset.js';
 import { profileRouter } from './routes/profile.js';
 import { companyRouter } from './routes/company.js';
 import { systemAdminRouter } from './routes/system-admin.js';
@@ -31,7 +32,21 @@ export function createApp() {
   app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'workshift-api' }));
   app.use(postgresRateLimit({ scope: 'api', windowMs: 60_000, limit: 100 }));
   app.use('/api/v1/attendance', postgresRateLimit({ scope: 'attendance', windowMs: 60_000, limit: 8 }));
+  // Password guessing is limited per account, so rotating IP addresses does not
+  // help and colleagues behind one office IP do not lock each other out.
+  app.use('/api/v1/auth/login', postgresRateLimit({
+    scope: 'login', windowMs: 15 * 60_000, limit: 10,
+    identify: (req) => (typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '')
+  }));
+  // Reset requests are limited per account (code guessing) and per address
+  // (mass sending to many accounts).
+  app.use('/api/v1/auth/password-reset', postgresRateLimit({
+    scope: 'password-reset', windowMs: 15 * 60_000, limit: 10,
+    identify: (req) => (typeof req.body?.identifier === 'string' ? req.body.identifier.trim().toLowerCase() : '')
+  }));
+  app.use('/api/v1/auth/password-reset', postgresRateLimit({ scope: 'password-reset-ip', windowMs: 15 * 60_000, limit: 30 }));
 
+  app.use('/api/v1/auth/password-reset', passwordResetRouter);
   app.use('/api/v1/auth', authRouter);
   app.use('/api/v1', profileRouter);
   app.use('/api/v1', companyRouter);

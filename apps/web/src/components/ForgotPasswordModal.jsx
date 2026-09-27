@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Eye, EyeOff, KeyRound, Lock, Phone, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Eye, EyeOff, KeyRound, Lock, Mail, RefreshCw } from 'lucide-react';
 import { confirmPasswordReset, requestPasswordResetOtp } from '../lib/api';
 import { Modal } from './Modal';
 
 const initialForm = {
-  phoneNumber: '',
+  identifier: '',
   otpCode: '',
   newPassword: '',
   confirmPassword: ''
@@ -44,15 +44,15 @@ export function ForgotPasswordModal({ isOpen, onClose }) {
 
   async function requestOtp(event) {
     event?.preventDefault();
-    if (!form.phoneNumber.trim() || busy) return;
+    if (!form.identifier.trim() || busy) return;
     setBusy(true);
     setError(undefined);
     setNotice(undefined);
     try {
-      const response = await requestPasswordResetOtp(form.phoneNumber);
+      const response = await requestPasswordResetOtp(form.identifier);
       setStep('confirm');
       setCooldownSeconds(response.data?.retryAfterSeconds ?? 60);
-      setNotice('Mã xác thực gồm 6 chữ số đã được gửi đến số điện thoại của bạn.');
+      setNotice(response.message || 'Nếu thông tin khớp với một tài khoản đang hoạt động, mã xác thực đã được gửi.');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Không thể gửi mã xác thực. Vui lòng thử lại.');
     } finally {
@@ -76,7 +76,7 @@ export function ForgotPasswordModal({ isOpen, onClose }) {
     setNotice(undefined);
     try {
       const response = await confirmPasswordReset({
-        phoneNumber: form.phoneNumber,
+        identifier: form.identifier,
         otpCode: form.otpCode,
         newPassword: form.newPassword
       });
@@ -91,7 +91,7 @@ export function ForgotPasswordModal({ isOpen, onClose }) {
 
   const title = step === 'complete' ? 'Đặt lại mật khẩu thành công' : 'Quên mật khẩu';
   const description = step === 'request'
-    ? 'Nhập số điện thoại đã đăng ký để nhận mã OTP qua SMS.'
+    ? 'Nhập email hoặc số điện thoại đã đăng ký. Mã OTP được gửi qua email (hoặc SMS nếu hệ thống đã bật).'
     : step === 'confirm'
       ? 'Mã OTP có hiệu lực trong 5 phút và chỉ dùng được một lần.'
       : 'Mật khẩu mới đã được lưu an toàn.';
@@ -114,21 +114,20 @@ export function ForgotPasswordModal({ isOpen, onClose }) {
       {step === 'request' && (
         <form onSubmit={requestOtp} className="space-y-5">
           <div>
-            <label htmlFor="reset-phone" className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700">
-              Số điện thoại đã đăng ký
+            <label htmlFor="reset-identifier" className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-700">
+              Email hoặc số điện thoại đã đăng ký
             </label>
             <div className="relative">
-              <Phone className="pointer-events-none absolute inset-y-0 left-3.5 my-auto size-4 text-slate-400" />
+              <Mail className="pointer-events-none absolute inset-y-0 left-3.5 my-auto size-4 text-slate-400" />
               <input
-                id="reset-phone"
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
+                id="reset-identifier"
+                type="text"
+                autoComplete="username"
                 required
-                maxLength={30}
-                placeholder="Ví dụ: 0901234567"
-                value={form.phoneNumber}
-                onChange={(event) => updateForm('phoneNumber', event.target.value)}
+                maxLength={255}
+                placeholder="Ví dụ: ten@gmail.com hoặc 0901234567"
+                value={form.identifier}
+                onChange={(event) => updateForm('identifier', event.target.value)}
                 className="input pl-10"
               />
             </div>

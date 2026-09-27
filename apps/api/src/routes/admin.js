@@ -85,8 +85,38 @@ async function revokePendingInvitations(email) {
     status: 'pending'
   });
   const pending = (invitations ?? []).filter((invitation) => normalizeEmail(invitation.emailAddress) === email);
-  await Promise.all(pending.map((invitation) => clerkClient.invitations.revokeInvitation(invitation.id)));
-  return pending.length;
+  return revokeInvitations(pending);
+}
+
+async function revokeInvitations(invitations) {
+  await Promise.all(invitations.map((invitation) => clerkClient.invitations.revokeInvitation(invitation.id)));
+  return invitations.length;
+}
+
+// Bulk invitations list pending invitations once, instead of searching Clerk once per row.
+async function pendingInvitationsByEmail() {
+  const byEmail = new Map();
+  const pageSize = 500;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, totalCount } = await clerkClient.invitations.getInvitationList({ status: 'pending', limit: pageSize, offset });
+    for (const invitation of data ?? []) {
+      const email = normalizeEmail(invitation.emailAddress);
+      byEmail.set(email, [...(byEmail.get(email) ?? []), invitation]);
+    }
+    if (!data?.length || offset + data.length >= totalCount) return byEmail;
+  }
+}
+
+// Bulk invitations check every office in one query, instead of one query per row.
+async function companyOfficeIds(companyId, officeIds) {
+  const ids = [...new Set(officeIds.filter(Boolean))];
+  if (!ids.length) return new Set();
+  const { data, error } = await createServiceClient().from('offices')
+    .select('id')
+    .eq('company_id', companyId)
+    .in('id', ids);
+  if (error) throw new HttpError(502, 'Khong the kiem tra phong ban.', 'DATABASE_ERROR');
+  return new Set(data.map((office) => office.id));
 }
 
 async function assertInvitationOffice(companyId, officeId) {
@@ -100,9 +130,11 @@ async function assertInvitationOffice(companyId, officeId) {
   if (!data) throw new HttpError(422, 'Phong ban khong thuoc cong ty cua ban.', 'OFFICE_SCOPE_FORBIDDEN');
 }
 
-async function createEmployeeInvitation({ email, role, companyId, officeId, fullName }) {
+async function createEmployeeInvitation({ email, role, companyId, officeId, fullName, pendingInvitations }) {
   try {
-    const replacedInvitationCount = await revokePendingInvitations(email);
+    const replacedInvitationCount = pendingInvitations
+      ? await revokeInvitations(pendingInvitations)
+      : await revokePendingInvitations(email);
     const invitation = await clerkClient.invitations.createInvitation({
       emailAddress: email,
       // Clerk's Account Portal consumes the invitation ticket and completes
@@ -273,16 +305,25 @@ adminRouter.post('/employees/bulk-invitations', asyncHandler(async (req, res) =>
   const companyId = await companyIdForProfile(req.profile);
   if (!companyId) throw new HttpError(409, 'Tai khoan chua duoc gan vao cong ty.', 'COMPANY_NOT_ASSIGNED');
 
+  const [validOfficeIds, pendingByEmail] = await Promise.all([
+    companyOfficeIds(companyId, body.employees.map((employee) => employee.officeId)),
+    pendingInvitationsByEmail()
+  ]);
   const results = [];
   for (const [index, employee] of body.employees.entries()) {
     const email = normalizeEmail(employee.email);
     const role = req.profile.role === 'HR' ? 'EMPLOYEE' : employee.role;
     try {
       assertRoleEmail(email, role);
-      await assertInvitationOffice(companyId, employee.officeId);
+      if (employee.officeId && !validOfficeIds.has(employee.officeId)) {
+        throw new HttpError(422, 'Phong ban khong thuoc cong ty cua ban.', 'OFFICE_SCOPE_FORBIDDEN');
+      }
       const { invitation, replacedInvitationCount } = await createEmployeeInvitation({
-        email, role, companyId, officeId: employee.officeId, fullName: employee.fullName
+        email, role, companyId, officeId: employee.officeId, fullName: employee.fullName,
+        pendingInvitations: pendingByEmail.get(email) ?? []
       });
+      // A repeated email later in the batch replaces this invitation, as before.
+      pendingByEmail.set(email, [invitation]);
       results.push({ index, email, success: true, invitationId: invitation.id, replacedInvitationCount });
     } catch (error) {
       results.push({ index, email, success: false, error: error instanceof Error ? error.message : 'Khong the gui loi moi.' });

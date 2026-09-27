@@ -80,7 +80,8 @@ hrWorkspaceRouter.get('/reports/attendance.csv', asyncHandler(async (req, res) =
     .eq('users.company_id', companyId)
     .order('check_in_time'); 
   if (error) dbFail(error); 
-  const safe = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`; 
+  // Spreadsheets evaluate a cell starting with =, +, -, @, tab or CR as a formula; a leading ' keeps an employee-controlled name as text.
+  const safe = (v) => { const text = String(v ?? ''); return `"${(/^[=+\-@\t\r]/.test(text) ? `'${text}` : text).replaceAll('"', '""')}"`; };
   const rows = ['Họ tên,Email,Check-in,Check-out,Trạng thái', ...(data ?? []).map((r) => [r.users.full_name, r.users.email, r.check_in_time, r.check_out_time, r.status].map(safe).join(','))]; 
   res.type('text/csv').attachment('attendance-report.csv').send(`\uFEFF${rows.join('\n')}`); 
 }));
